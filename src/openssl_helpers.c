@@ -22,14 +22,9 @@ struct HTTPResponse *parse_response(const char* response_string, char **error) {
     return NULL;
   }
   const char *content_length_start = strcasestr(response_string, "Content-Length: ");
-  if (content_length_start == NULL || content_length_start > headers_end) {
-    *error = "Failed to get content length from response";
-    return NULL;
-  }
-  content_length_start += strlen("Content-Length: ");
-  if (sscanf(content_length_start, "%d", &(response->length)) == 0) {
-    *error = "Failed to get content length from response";
-    return NULL;
+  if (content_length_start && content_length_start <= headers_end) {
+    content_length_start += strlen("Content-Length: ") - 1;
+    sscanf(content_length_start, "%d", &(response->length));
   }
   response->data = headers_end + strlen("\r\n\r\n");
   return response;
@@ -42,9 +37,9 @@ char *send_request(BIO *bio, const char *request, char **error) {
   }
   char *response = NULL;
   int total_size = 0, size;
-  char buffer[RESPONSE_BUFFER_SIZE];
+  char buffer[1024];
   for (;;) {
-    size = BIO_read(bio, buffer, RESPONSE_BUFFER_SIZE - 1);
+    size = BIO_read(bio, buffer, 1023);
     if (size < 1) break;
     buffer[size] = '\0';
     response = realloc(response, total_size + size + 1);

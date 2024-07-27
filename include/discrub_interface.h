@@ -8,6 +8,6 @@
 #include <string.h>
 #include <errno.h>
 
-int discrub_delete_message(BIO *bio, const char *guild_id, const char *message_id, char **error);
+int discrub_delete_message(BIO *bio, const char *channel_id, const char *message_id, const char* token, char **error);
 
 #endif
