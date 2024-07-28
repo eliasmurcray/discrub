@@ -37,9 +37,9 @@ char *send_request(BIO *bio, const char *request, char **error) {
   }
   char *response = NULL;
   int total_size = 0, size;
-  char buffer[1024];
+  char buffer[RESPONSE_BUFFER_SIZE];
   for (;;) {
-    size = BIO_read(bio, buffer, 1023);
+    size = BIO_read(bio, buffer, RESPONSE_BUFFER_SIZE - 1);
     if (size < 1) break;
     buffer[size] = '\0';
     response = realloc(response, total_size + size + 1);

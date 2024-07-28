@@ -47,6 +47,7 @@ int discrub_delete_message(BIO *bio, const char* channel_id, const char* message
     char* buffer = (char *)malloc(error_size);
     snprintf(buffer, error_size, "Status code is %hu", response->code);
     *error = buffer;
+    return 1;
   }
   return 0;
 }

@@ -11,7 +11,7 @@ int main(int argc, char **argv) {
   }
 
   BIO *bio = BIO_new_ssl_connect(ctx);
-  BIO_set_conn_hostname(bio, "discord.com:https");
+  BIO_set_conn_hostname(bio, "discord.com:443");
   if (BIO_do_connect(bio) <= 0) {
     fprintf(stderr, "Failed connection");
     SSL_CTX_free(ctx);
@@ -24,6 +24,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  free(error);
   SSL_CTX_free(ctx);
   BIO_free(bio);
 }
