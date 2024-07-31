@@ -1,5 +1,6 @@
 #include "discrub_interface.h"
 #include "openssl_helpers.h"
+#include "json.h"
 
 static int assert_snowflake(const char* snowflake_id) {
   if (!snowflake_id) return 1;
@@ -165,5 +166,22 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
   }
   strncpy(json, json_start, json_length);
   json[json_length] = '\0';
+  result(json_element) r_element = json_parse(json);
+  if(result_is_err(json_element)(&r_element)) {
+    typed(json_error) json_error = result_unwrap_err(json_element)(&r_element);
+    *error = (char *)json_error_to_string(json_error);
+    return NULL;
+  }
+
+  typed(json_element) element = result_unwrap(json_element)(&r_element);
+
+  if (element.type == JSON_ELEMENT_TYPE_OBJECT) {
+    result(json_element) r_message_count = json_object_find(element.value.as_object, "total_results");
+    if (result_is_ok(json_element)(&r_message_count)) {
+      typed(json_element) message_count = result_unwrap(json_element)(&r_message_count);
+      printf("Total messages: %d\n", (int)message_count.value.as_number.value.as_long);
+    }
+  }
+  json_free(&element);
   return NULL;
 }
