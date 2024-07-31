@@ -8,6 +8,26 @@
 #include <string.h>
 #include <errno.h>
 
-int discrub_delete_message(BIO *bio, const char *channel_id, const char *message_id, const char* token, char **error);
+struct DiscordMessage {
+  const char *author_id;
+  const char *content;
+  const char *id;
+};
+
+struct SearchOpts {
+  const char *author_id;
+  const char *channel_id;
+  const unsigned char include_nsfw;
+  const unsigned int offset;
+};
+
+struct SearchResponse {
+  struct DiscordMessage* messages;
+  unsigned int length;
+};
+
+unsigned char discrub_delete_message(BIO *bio, const char* token, const char *channel_id, const char *message_id, char **error);
+
+struct SearchResponse* discrub_search_messages(BIO *bio, const char *token, const char *server_id, struct SearchOpts *options, char **error);
 
 #endif
