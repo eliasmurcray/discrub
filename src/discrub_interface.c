@@ -129,9 +129,11 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
   size_t request_size = snprintf(NULL, 0, request_fmt, server_id, params, token) + 1;
   char *request_string = malloc(request_size);
   if (0 > snprintf(request_string, request_size, request_fmt, server_id, params, token)) {
+    free(params);
     *error = "Failed to format request string";
     return NULL;
   }
+  free(params);
   char *response_string = send_request(bio, request_string, error);
   free(request_string);
   if (!response_string) return NULL;

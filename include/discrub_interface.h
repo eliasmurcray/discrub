@@ -12,6 +12,7 @@ struct DiscordMessage {
   const char *author_id;
   const char *content;
   const char *id;
+  const char* timestamp;
 };
 
 struct SearchOpts {
