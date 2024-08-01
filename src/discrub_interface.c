@@ -201,6 +201,7 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
   }
   json_array_t *messages_arr = messages.value.as_array;
   for (size_t i = 0; i < messages_arr->count; i++) {
+    printf("Message %zu:\n", i);
     json_element_t message_parent = messages_arr->elements[i];
     if (message_parent.type != JSON_ELEMENT_TYPE_ARRAY) {
       size_t error_size = snprintf(NULL, 0, "response.messages[%zu] is not an array", i);
@@ -214,15 +215,39 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
       snprintf(*error, error_size, "response.messages[%zu] length is less than 1", i);
       return NULL;
     }
-    json_element_t message = message_parent.value.as_array->elements[0];
+    json_element_t message = message_parent.value.as_array->elements[0]; // not verifying if its an object
     json_element_result_t message_id_result = json_object_find(message.value.as_object, "id");
     if (result_is_err(json_element)(&message_id_result)) {
       json_error_t err = result_unwrap_err(json_element)(&message_id_result);
       *error = (char *)json_error_to_string(err);
       return NULL;
     }
-    json_element_t message_id = result_unwrap(json_element)(&message_id_result);
-    printf("Message %zu id: %s\n", i, message_id.value.as_string);
+    json_element_t message_id = result_unwrap(json_element)(&message_id_result); // not verifying if its a string
+    printf("  id: %s\n", message_id.value.as_string);
+    json_element_result_t message_author_result = json_object_find(message.value.as_object, "author");
+    if (result_is_err(json_element)(&message_author_result)) {
+      json_error_t err = result_unwrap_err(json_element)(&message_author_result);
+      *error = (char *)json_error_to_string(err);
+      return NULL;
+    }
+    json_element_t message_author = result_unwrap(json_element)(&message_author_result); // not verifying if its an object
+    json_element_result_t message_author_id_result = json_object_find(message_author.value.as_object, "id");
+    if (result_is_err(json_element)(&message_author_id_result)) {
+      json_error_t err = result_unwrap_err(json_element)(&message_author_id_result);
+      *error = (char *)json_error_to_string(err);
+      return NULL;
+    }
+    json_element_t message_author_id = result_unwrap(json_element)(&message_author_id_result); // not verifying if its a string
+    printf("  author_id: %s\n", message_author_id.value.as_string);
+    json_element_result_t message_content_result = json_object_find(message.value.as_object, "content");
+    if (result_is_err(json_element)(&message_content_result)) {
+      json_error_t err = result_unwrap_err(json_element)(&message_content_result);
+      *error = (char *)json_error_to_string(err);
+      return NULL;
+    }
+    json_element_t message_content = result_unwrap(json_element)(&message_content_result); // not verifying if its a string
+    printf("  content: %s\n", message_content.value.as_string);
+    printf("\n");
   }
   json_free(&element);
   return NULL;
