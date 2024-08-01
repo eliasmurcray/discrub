@@ -7,9 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
+#include "openssl_helpers.h"                                                                                                                                                               
+#include "json.h"
 
 struct DiscordMessage {
   const char *author_id;
+  const char* author_username;
   const char *content;
   const char *id;
   const char* timestamp;

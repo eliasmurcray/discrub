@@ -1,6 +1,4 @@
 #include "discrub_interface.h"
-#include "openssl_helpers.h"
-#include "json.h"
 
 static int assert_snowflake(const char* snowflake_id) {
   if (!snowflake_id) return 1;
@@ -58,6 +56,21 @@ static char* get_params(struct SearchOpts *opts) {
   }
   params[params_size - 2] = '\0';
   return params;
+}
+
+static char *fmt_timestamp(const char* timestamp) {
+  struct tm tm;
+  memset(&tm, 0, sizeof(struct tm));
+  if (strptime(timestamp, "%Y-%m-%dT%H:%M:%S", &tm) == NULL) return NULL;
+  time_t time_utc = mktime(&tm);
+  if (time_utc == -1) return NULL;
+  struct tm *local_tm = localtime(&time_utc);
+  char buffer[64];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", local_tm);
+  char *new_timestamp = malloc(strlen(buffer) + 1);
+  if (!new_timestamp) return NULL;
+  strncpy(new_timestamp, buffer, strlen(buffer));
+  return new_timestamp;
 }
 
 unsigned char discrub_delete_message(BIO *bio, const char *token, const char *channel_id, const char *message_id, char **error) {
@@ -200,6 +213,7 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
     return NULL;
   }
   json_array_t *messages_arr = messages.value.as_array;
+  struct DiscordMessage* returned_messages = malloc(messages_arr->count);
   for (size_t i = 0; i < messages_arr->count; i++) {
     printf("Message %zu:\n", i);
     json_element_t message_parent = messages_arr->elements[i];
@@ -216,6 +230,8 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
       return NULL;
     }
     json_element_t message = message_parent.value.as_array->elements[0]; // not verifying if its an object
+
+    // message id
     json_element_result_t message_id_result = json_object_find(message.value.as_object, "id");
     if (result_is_err(json_element)(&message_id_result)) {
       json_error_t err = result_unwrap_err(json_element)(&message_id_result);
@@ -224,6 +240,8 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
     }
     json_element_t message_id = result_unwrap(json_element)(&message_id_result); // not verifying if its a string
     printf("  id: %s\n", message_id.value.as_string);
+
+    // message author id TODO replace with username
     json_element_result_t message_author_result = json_object_find(message.value.as_object, "author");
     if (result_is_err(json_element)(&message_author_result)) {
       json_error_t err = result_unwrap_err(json_element)(&message_author_result);
@@ -239,6 +257,8 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
     }
     json_element_t message_author_id = result_unwrap(json_element)(&message_author_id_result); // not verifying if its a string
     printf("  author_id: %s\n", message_author_id.value.as_string);
+
+    // message content
     json_element_result_t message_content_result = json_object_find(message.value.as_object, "content");
     if (result_is_err(json_element)(&message_content_result)) {
       json_error_t err = result_unwrap_err(json_element)(&message_content_result);
@@ -247,6 +267,17 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
     }
     json_element_t message_content = result_unwrap(json_element)(&message_content_result); // not verifying if its a string
     printf("  content: %s\n", message_content.value.as_string);
+
+    // message timestamp
+    json_element_result_t timestamp_r = json_object_find(message.value.as_object, "timestamp");
+    if (result_is_err(json_element)(&timestamp_r)) {
+      json_error_t err = result_unwrap_err(json_element)(&timestamp_r);
+      *error = (char *)json_error_to_string(err);
+      return NULL;
+    }
+    json_element_t timestamp = result_unwrap(json_element)(&timestamp_r); // not verifying if its a string
+    printf("%s\n", fmt_timestamp(timestamp.value.as_string));
+
     printf("\n");
   }
   json_free(&element);
