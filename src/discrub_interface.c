@@ -166,21 +166,63 @@ struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, cons
   }
   strncpy(json, json_start, json_length);
   json[json_length] = '\0';
-  result(json_element) r_element = json_parse(json);
-  if(result_is_err(json_element)(&r_element)) {
-    typed(json_error) json_error = result_unwrap_err(json_element)(&r_element);
-    *error = (char *)json_error_to_string(json_error);
+  json_element_result_t element_result = json_parse(json);
+  if(result_is_err(json_element)(&element_result)) {
+    json_error_t err = result_unwrap_err(json_element)(&element_result);
+    *error = (char *)json_error_to_string(err);
     return NULL;
   }
 
-  typed(json_element) element = result_unwrap(json_element)(&r_element);
+  json_element_t element = result_unwrap(json_element)(&element_result);
+  if (element.type != JSON_ELEMENT_TYPE_OBJECT) {
+    *error = "Response JSON element is not of type 'object'";
+    return NULL;
+  }
 
-  if (element.type == JSON_ELEMENT_TYPE_OBJECT) {
-    result(json_element) r_message_count = json_object_find(element.value.as_object, "total_results");
-    if (result_is_ok(json_element)(&r_message_count)) {
-      typed(json_element) message_count = result_unwrap(json_element)(&r_message_count);
-      printf("Total messages: %d\n", (int)message_count.value.as_number.value.as_long);
+  json_element_result_t total_results_result = json_object_find(element.value.as_object, "total_results");
+  if (result_is_err(json_element)(&total_results_result)) {
+    json_error_t err = result_unwrap_err(json_element)(&total_results_result);
+    *error = (char *)json_error_to_string(err);
+    return NULL;
+  }
+  json_element_t total_results = result_unwrap(json_element)(&total_results_result);
+  printf("Total messages: %d\n", (int)total_results.value.as_number.value.as_long);
+
+  result(json_element) messages_result = json_object_find(element.value.as_object, "messages");
+  if (result_is_err(json_element)(&messages_result)) {
+    json_error_t err = result_unwrap_err(json_element)(&messages_result);
+    *error = (char *)json_error_to_string(err);
+    return NULL;
+  }
+  json_element_t messages = result_unwrap(json_element)(&messages_result);
+  if (messages.type != JSON_ELEMENT_TYPE_ARRAY) {
+    *error = "response.messages is not of type 'array'";
+    return NULL;
+  }
+  json_array_t *messages_arr = messages.value.as_array;
+  for (size_t i = 0; i < messages_arr->count; i++) {
+    json_element_t message_parent = messages_arr->elements[i];
+    if (message_parent.type != JSON_ELEMENT_TYPE_ARRAY) {
+      size_t error_size = snprintf(NULL, 0, "response.messages[%zu] is not an array", i);
+      *error = malloc(error_size);
+      snprintf(*error, error_size, "response.messages[%zu] is not an array", i);
+      return NULL;
     }
+    if (message_parent.value.as_array->count < 1) {
+      size_t error_size = snprintf(NULL, 0, "response.messages[%zu] length is less than 1", i);
+      *error = malloc(error_size);
+      snprintf(*error, error_size, "response.messages[%zu] length is less than 1", i);
+      return NULL;
+    }
+    json_element_t message = message_parent.value.as_array->elements[0];
+    json_element_result_t message_id_result = json_object_find(message.value.as_object, "id");
+    if (result_is_err(json_element)(&message_id_result)) {
+      json_error_t err = result_unwrap_err(json_element)(&message_id_result);
+      *error = (char *)json_error_to_string(err);
+      return NULL;
+    }
+    json_element_t message_id = result_unwrap(json_element)(&message_id_result);
+    printf("Message %zu id: %s\n", i, message_id.value.as_string);
   }
   json_free(&element);
   return NULL;
