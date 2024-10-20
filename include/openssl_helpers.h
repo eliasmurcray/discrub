@@ -1,9 +1,9 @@
 #ifndef OPENSSL_HELPERS_H
 #define OPENSSL_HELPERS_H
 
-#include <openssl/ssl.h>
 #include <openssl/bio.h>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,12 +11,18 @@
 struct HTTPResponse {
   uint16_t code;
   char *data;
-  /* use more generous size with larger applications */
-  uint32_t length;
+  unsigned int length;
 };
 
-struct HTTPResponse *parse_response(const char* response, char **error);
+enum HTTPError {
+  HTTP_ENOMEM,
+  HTTP_EBIO,
+  HTTP_EPARSE,
+};
 
-char *send_request(BIO *bio, const char* request, char **error);
+struct HTTPResponse *http_request(BIO *connection, const char *request,
+                                  enum HTTPError *error);
+
+const char *http_strerror(enum HTTPError *error);
 
 #endif

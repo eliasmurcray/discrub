@@ -1,59 +1,50 @@
 #include "discrub_interface.h"
 
-static int assert_snowflake(const char* snowflake_id) {
-  if (!snowflake_id) return 1;
-  errno = 0;
-  char *endptr = NULL;
-  strtoull(snowflake_id, &endptr, 10);
-  return !errno && *endptr != '\0';
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static void add_param(char **params, size_t *size, const char *key,
+                      const char *value) {
+  if (value) {
+    size_t len = strlen(key) + strlen(value) + 2;
+    *params = realloc(*params, *size + len);
+    if (*params) {
+      strcat(*params, key);
+      strcat(*params, "=");
+      strcat(*params, value);
+      strcat(*params, "&");
+      *size += len;
+    }
+  }
 }
 
-static char* get_params(struct SearchOpts *opts) {
+static char *get_params(struct SearchOptions *options) {
   size_t params_size = 1;
-  if (opts->author_id) {
-    params_size += strlen("author_id=") + strlen(opts->author_id) + 1;
-  }
-  if (opts->channel_id) {
-    params_size += strlen("channel_id=") + strlen(opts->channel_id) + 1;
-  }
-  if (opts->include_nsfw) {
-    params_size += strlen("include_nsfw=") + strlen(opts->include_nsfw ? "true" : "false") + 1;
-  }
-  if (opts->offset) {
-    char *uint_str = malloc(12);
-    if (!uint_str) return NULL;
-    snprintf(uint_str, 12, "%u", opts->offset);
-    params_size += strlen("offset=") + strlen(uint_str) + 1;
-    free(uint_str);
-  }
-  if (params_size == 1) return NULL;
   char *params = malloc(params_size);
   if (!params) return NULL;
   params[0] = '\0';
-  if (opts->author_id) {
-    strcat(params, "author_id=");
-    strcat(params, opts->author_id);
-    strcat(params, "&");
+
+  add_param(&params, &params_size, "author_id", options->author_id);
+  add_param(&params, &params_size, "channel_id", options->channel_id);
+  add_param(&params, &params_size, "content", options->content);
+  add_param(&params, &params_size, "mentions", options->mentions);
+  add_param(&params, &params_size, "include_nsfw",
+            options->include_nsfw ? "true" : "false");
+  add_param(&params, &params_size, "pinned",
+            options->pinned ? "true" : "false");
+
+  if (options->offset) {
+    char uint_str[12];
+    snprintf(uint_str, sizeof(uint_str), "%lu", options->offset);
+    add_param(&params, &params_size, "offset", uint_str);
   }
-  if (opts->channel_id) {
-    strcat(params, "channel_id=");
-    strcat(params, opts->channel_id);
-    strcat(params, "&");
+
+  if (params_size == 1) {
+    free(params);
+    return NULL;
   }
-  if (opts->include_nsfw) {
-    strcat(params, "include_nsfw=");
-    strcat(params, opts->include_nsfw ? "true" : "false");
-    strcat(params, "&");
-  }
-  if (opts->offset) {
-    char *uint_str = malloc(12);
-    if (!uint_str) return NULL;
-    snprintf(uint_str, 12, "%u", opts->offset);
-    strcat(params, "offset=");
-    strcat(params, uint_str);
-    free(uint_str);
-    strcat(params, "&");
-  }
+
   params[params_size - 2] = '\0';
   return params;
 }
@@ -73,213 +64,220 @@ static char *fmt_timestamp(const char* timestamp) {
   return new_timestamp;
 }
 
-unsigned char discrub_delete_message(BIO *bio, const char *token, const char *channel_id, const char *message_id, char **error) {
-  if (!bio) {
-    *error = "Invalid BIO object";
+bool discrub_delete_message(BIO *connection, const char *token,
+                            const char *channel_id, const char *message_id,
+                            enum DiscrubError *error) {
+  if (!connection || !token || !channel_id || !message_id) {
+    *error = DISCRUB_EARGS;
     return 1;
   }
-  if (assert_snowflake(channel_id)) {
-    *error = "Invalid guild_id";
-    return 1;
-  }
-  if (assert_snowflake(message_id)) {
-    *error = "Invalid message_id";
-    return 1;
-  }
-  if (!token) {
-    *error = "Invalid auth token";
-    return 1;
-  }
-  const char* request_fmt = "DELETE /api/v9/channels/%s/messages/%s HTTP/1.1\r\n"
-                            "Host: discord.com\r\n"
-                            "Authorization: %s\r\n"
-                            "Connection: close\r\n"
-                            "\r\n";
-  size_t request_size = snprintf(NULL, 0, request_fmt, channel_id, message_id, token) + 1;
+  const char *request_fmt =
+      "DELETE /api/v9/channels/%s/messages/%s HTTP/1.1\r\n"
+      "Host: discord.com\r\n"
+      "Authorization: %s\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  size_t request_size =
+      snprintf(NULL, 0, request_fmt, channel_id, message_id, token) + 1;
   char *request_string = malloc(request_size);
-  if (0 > snprintf(request_string, request_size, request_fmt, channel_id, message_id, token)) {
-    *error = "Failed to format request string";
+  if (!request_string) {
+    *error = DISCRUB_ENOMEM;
+    return false;
+  }
+  snprintf(request_string, request_size, request_fmt, channel_id, message_id,
+           token);
+  enum HTTPError *http_error = NULL;
+  struct HTTPResponse *response =
+      http_request(connection, request_string, http_error);
+  if (!response) {
+    printf("Error while fetching: %s\n\nWith request: %s\n",
+           http_strerror(http_error), request_string);
+    free(request_string);
+    *error = DISCRUB_EHTTP;
+    return false;
+  }
+  free(request_string);
+  if (!response) {
+    printf("Failed to delete message: No response\n");
     return 1;
   }
-  char *response_string = send_request(bio, request_string, error);
-  free(request_string);
-  if (!response_string) return 1;
-  struct HTTPResponse *response = parse_response(response_string, error);
-  free(response_string);
-  if (!response) return 1;
   if (response->code != 204) {
-    size_t error_size = snprintf(NULL, 0, "Status code is %hu", response->code) + 1;
-    char* buffer = malloc(error_size);
-    snprintf(buffer, error_size, "Status code is %hu", response->code);
-    *error = buffer;
+    printf("Failed to delete message: Status code is %hu\n", response->code);
     return 1;
   }
   return 0;
 }
 
-struct SearchResponse* discrub_search_messages(BIO *bio, const char* token, const char *server_id, struct SearchOpts *opts, char **error) {
-  if (!bio) {
-    *error = "Invalid BIO object";
+struct SearchResponse *discrub_search(BIO *connection, const char *token,
+                                      const char *server_id,
+                                      struct SearchOptions *options,
+                                      enum DiscrubError *error) {
+  if (!connection || !token || !server_id || !options) {
+    *error = DISCRUB_EARGS;
     return NULL;
   }
-  if (!token) {
-    *error = "Invalid auth token";
-    return NULL;
-  }
-  if (assert_snowflake(server_id)) {
-    *error = "Invalid server_id";
-    return NULL;
-  }
-  char *params = get_params(opts);
+
+  char *params = get_params(options);
   if (!params) {
-    *error = "Failed to generate params from SearchOpts";
+    *error = DISCRUB_EARGS;
     return NULL;
   }
-  const char* request_fmt = "GET /api/v9/guilds/%s/messages/search?%s HTTP/1.1\r\n"
-                            "Host: discord.com\r\n"
-                            "Authorization: %s\r\n"
-                            "Connection: close\r\n"
-                            "\r\n";
-  size_t request_size = snprintf(NULL, 0, request_fmt, server_id, params, token) + 1;
+  const char *request_fmt =
+      "GET /api/v9/guilds/%s/messages/search?%s HTTP/1.1\r\n"
+      "Host: discord.com\r\n"
+      "Authorization: %s\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  size_t request_size =
+      snprintf(NULL, 0, request_fmt, server_id, params, token) + 1;
   char *request_string = malloc(request_size);
-  if (0 > snprintf(request_string, request_size, request_fmt, server_id, params, token)) {
-    free(params);
-    *error = "Failed to format request string";
-    return NULL;
-  }
+  snprintf(request_string, request_size, request_fmt, server_id, params, token);
   free(params);
-  char *response_string = send_request(bio, request_string, error);
+  enum HTTPError *http_error = NULL;
+  struct HTTPResponse *response =
+      http_request(connection, request_string, http_error);
+  if (http_error) {
+    printf("Error while fetching: %s\n\nWith request: %s\n",
+           http_strerror(http_error), request_string);
+    free(request_string);
+    *error = DISCRUB_EHTTP;
+    return NULL;
+  }
   free(request_string);
-  if (!response_string) return NULL;
-  struct HTTPResponse *response = parse_response(response_string, error);
-  free(response_string);
-  if (!response) return NULL;
+  if (!response) {
+    printf("Failed to search: No response\n");
+    return NULL;
+  }
   if (response->code != 200) {
-    size_t error_size = snprintf(NULL, 0, "Status code is %hu", response->code) + 1;
-    char *buffer = malloc(error_size);
-    snprintf(buffer, error_size, "Status code is %hu", response->code);
-    *error = buffer;
+    printf("Failed to search: Status code is %hu\n", response->code);
+    free(response);
     return NULL;
   }
+
   if (!strtok(response->data, "\n")) {
-    *error = "Failed to extract json from response";
+    free(response);
+    *error = DISCRUB_EHTTP;
     return NULL;
   }
+
   const char *json_start = strtok(NULL, "\n");
-  const char* json_end = strtok(NULL, "\n");
+  const char *json_end = strtok(NULL, "\n");
+
   if (!json_start || !json_end) {
-    *error = "Failed to extract json from response";
+    free(response);
+    *error = DISCRUB_EHTTP;
     return NULL;
   }
+
   size_t json_length = json_end - json_start;
-  char *json = malloc(json_length + 1);
-  if (!json) {
-    *error = "Failed to malloc json string";
+  char *json_string = malloc(json_length + 1);
+  if (!json_string) {
+    free(response);
+    *error = DISCRUB_ENOMEM;
     return NULL;
   }
-  strncpy(json, json_start, json_length);
-  json[json_length] = '\0';
-  json_element_result_t element_result = json_parse(json);
-  if(result_is_err(json_element)(&element_result)) {
-    json_error_t err = result_unwrap_err(json_element)(&element_result);
-    *error = (char *)json_error_to_string(err);
+  strncpy(json_string, json_start, json_length);
+  json_string[json_length] = '\0';
+  free(response);
+
+  enum JsonError json_error;
+  struct JsonToken *response_object = jsontok_parse(json_string, &json_error);
+  if (!response_object) {
+    printf("Error parsing response JSON: %s\n", jsontok_strerror(json_error));
+    *error = DISCRUB_EPARSE;
     return NULL;
   }
 
-  json_element_t element = result_unwrap(json_element)(&element_result);
-  if (element.type != JSON_ELEMENT_TYPE_OBJECT) {
-    *error = "Response JSON element is not of type 'object'";
+  if (response_object->type != JSON_OBJECT) {
+    *error = DISCRUB_EPARSE;
     return NULL;
   }
 
-  json_element_result_t total_results_result = json_object_find(element.value.as_object, "total_results");
-  if (result_is_err(json_element)(&total_results_result)) {
-    json_error_t err = result_unwrap_err(json_element)(&total_results_result);
-    *error = (char *)json_error_to_string(err);
+  struct JsonToken *messages_subarray = jsontok_get(response_object->as_object, "messages");
+  if (!messages_subarray) {
+    *error = DISCRUB_EPARSE;
     return NULL;
   }
-  json_element_t total_results = result_unwrap(json_element)(&total_results_result);
-  printf("Total messages: %d\n", (int)total_results.value.as_number.value.as_long);
-
-  result(json_element) messages_result = json_object_find(element.value.as_object, "messages");
-  if (result_is_err(json_element)(&messages_result)) {
-    json_error_t err = result_unwrap_err(json_element)(&messages_result);
-    *error = (char *)json_error_to_string(err);
+  if (messages_subarray->type != JSON_WRAPPED_ARRAY) {
+    jsontok_free(response_object);
+    *error = DISCRUB_EPARSE;
     return NULL;
   }
-  json_element_t messages = result_unwrap(json_element)(&messages_result);
-  if (messages.type != JSON_ELEMENT_TYPE_ARRAY) {
-    *error = "response.messages is not of type 'array'";
+
+  struct JsonToken *messages_array = jsontok_parse(messages_subarray->as_string, &json_error);
+  if (!messages_array) {
+    jsontok_free(messages_subarray);
+    jsontok_free(response_object);
+    *error = DISCRUB_EPARSE;
     return NULL;
   }
-  json_array_t *messages_arr = messages.value.as_array;
-  struct DiscordMessage* returned_messages = malloc(messages_arr->count);
-  for (size_t i = 0; i < messages_arr->count; i++) {
-    printf("Message %zu:\n", i);
-    json_element_t message_parent = messages_arr->elements[i];
-    if (message_parent.type != JSON_ELEMENT_TYPE_ARRAY) {
-      size_t error_size = snprintf(NULL, 0, "response.messages[%zu] is not an array", i);
-      *error = malloc(error_size);
-      snprintf(*error, error_size, "response.messages[%zu] is not an array", i);
-      return NULL;
-    }
-    if (message_parent.value.as_array->count < 1) {
-      size_t error_size = snprintf(NULL, 0, "response.messages[%zu] length is less than 1", i);
-      *error = malloc(error_size);
-      snprintf(*error, error_size, "response.messages[%zu] length is less than 1", i);
-      return NULL;
-    }
-    json_element_t message = message_parent.value.as_array->elements[0]; // not verifying if its an object
 
-    // message id
-    json_element_result_t message_id_result = json_object_find(message.value.as_object, "id");
-    if (result_is_err(json_element)(&message_id_result)) {
-      json_error_t err = result_unwrap_err(json_element)(&message_id_result);
-      *error = (char *)json_error_to_string(err);
-      return NULL;
-    }
-    json_element_t message_id = result_unwrap(json_element)(&message_id_result); // not verifying if its a string
-    printf("  id: %s\n", message_id.value.as_string);
-
-    // message author id TODO replace with username
-    json_element_result_t message_author_result = json_object_find(message.value.as_object, "author");
-    if (result_is_err(json_element)(&message_author_result)) {
-      json_error_t err = result_unwrap_err(json_element)(&message_author_result);
-      *error = (char *)json_error_to_string(err);
-      return NULL;
-    }
-    json_element_t message_author = result_unwrap(json_element)(&message_author_result); // not verifying if its an object
-    json_element_result_t message_author_id_result = json_object_find(message_author.value.as_object, "id");
-    if (result_is_err(json_element)(&message_author_id_result)) {
-      json_error_t err = result_unwrap_err(json_element)(&message_author_id_result);
-      *error = (char *)json_error_to_string(err);
-      return NULL;
-    }
-    json_element_t message_author_id = result_unwrap(json_element)(&message_author_id_result); // not verifying if its a string
-    printf("  author_id: %s\n", message_author_id.value.as_string);
-
-    // message content
-    json_element_result_t message_content_result = json_object_find(message.value.as_object, "content");
-    if (result_is_err(json_element)(&message_content_result)) {
-      json_error_t err = result_unwrap_err(json_element)(&message_content_result);
-      *error = (char *)json_error_to_string(err);
-      return NULL;
-    }
-    json_element_t message_content = result_unwrap(json_element)(&message_content_result); // not verifying if its a string
-    printf("  content: %s\n", message_content.value.as_string);
-
-    // message timestamp
-    json_element_result_t timestamp_r = json_object_find(message.value.as_object, "timestamp");
-    if (result_is_err(json_element)(&timestamp_r)) {
-      json_error_t err = result_unwrap_err(json_element)(&timestamp_r);
-      *error = (char *)json_error_to_string(err);
-      return NULL;
-    }
-    json_element_t timestamp = result_unwrap(json_element)(&timestamp_r); // not verifying if its a string
-    printf("%s\n", fmt_timestamp(timestamp.value.as_string));
-
-    printf("\n");
+  if (messages_array->type != JSON_ARRAY) {
+    jsontok_free(messages_subarray);
+    jsontok_free(response_object);
+    *error = DISCRUB_EPARSE;
+    return NULL;
   }
-  json_free(&element);
+
+  struct JsonArray *message_containers = messages_array->as_array;
+  printf("Length of message_containers array: %zu\n", message_containers->length);
+  size_t i = 0;
+  for (; i < message_containers->length; i++) {
+    struct JsonToken *message_container_token = message_containers->elements[i];
+    if (!message_container_token->as_string) {
+      printf("Message container token at %zu is NULL\n", i);
+      break;
+    }
+    struct JsonToken *message_container_array = jsontok_parse(message_container_token->as_string, &json_error);
+    if (!message_container_array) {
+      printf("Error in parsing message container subarray at index %zu: %s\n\n%s\n", i, jsontok_strerror(json_error), message_container_token->as_string);
+      break;
+    }
+    if (message_container_array->type != JSON_ARRAY || message_container_array->as_array->length != 1) {
+      jsontok_free(message_container_array);
+      break;
+    }
+    struct JsonToken *message_token = message_container_array->as_array->elements[0];
+    if (message_token->type != JSON_WRAPPED_OBJECT) {
+      jsontok_free(message_container_array);
+      break;
+    }
+    struct JsonToken *message_object = jsontok_parse(message_token->as_string, &json_error);
+    if (!message_object) {
+      printf("Error in parsing message token at index %zu: %s\n\n%s\n", i, jsontok_strerror(json_error), message_token->as_string);
+      jsontok_free(message_container_array);
+      break;
+    }
+    struct JsonToken *author_token = jsontok_get(message_object->as_object, "author");
+    if (!author_token || author_token->type != JSON_WRAPPED_OBJECT) {
+      jsontok_free(message_container_array);
+      break;
+    }
+    struct JsonToken *author_object = jsontok_parse(author_token->as_string, &json_error);
+    if (!author_object) {
+      jsontok_free(message_container_array);
+      break;
+    }
+    char *author_id = jsontok_get(author_object->as_object, "id")->as_string;
+    char *author_username = jsontok_get(author_object->as_object, "username")->as_string;
+    char *content = jsontok_get(message_object->as_object, "content")->as_string;
+    char *id = jsontok_get(message_object->as_object, "id")->as_string;
+    char *timestamp = jsontok_get(message_object->as_object, "timestamp")->as_string;
+    char *formatted = fmt_timestamp(timestamp);
+    printf("[%s] %s (%s) %s {%s}\n", formatted, author_id, author_username, content, id);
+    jsontok_free(message_container_array);
+  }
+  jsontok_free(messages_array);
+  jsontok_free(response_object);
+  free(json_string);
   return NULL;
+}
+
+const char *discrub_strerror(enum DiscrubError *error) {
+  switch (*error) {
+    case DISCRUB_ENOMEM: return "Memory allocation failed";
+    case DISCRUB_EARGS: return "Invalid arguments provided";
+    case DISCRUB_EHTTP: return "HTTP request failed";
+    default: return "Unknown Discrub error";
+  }
 }

@@ -1,38 +1,57 @@
 #ifndef DISCRUB_INTERFACE_H
 #define DISCRUB_INTERFACE_H
 
-#include <openssl/ssl.h>
+#include <errno.h>
 #include <openssl/bio.h>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <time.h>
-#include "openssl_helpers.h"                                                                                                                                                               
-#include "json.h"
+
+#include "jsontok.h"
+#include "openssl_helpers.h"
+
+enum DiscrubError {
+  DISCRUB_ENOMEM,
+  DISCRUB_EARGS,
+  DISCRUB_EHTTP,
+  DISCRUB_EPARSE,
+};
 
 struct DiscordMessage {
   const char *author_id;
-  const char* author_username;
+  const char *author_username;
   const char *content;
   const char *id;
-  const char* timestamp;
+  const char *timestamp;
 };
 
-struct SearchOpts {
+struct SearchOptions {
   const char *author_id;
   const char *channel_id;
-  const unsigned char include_nsfw;
-  const unsigned int offset;
+  const bool include_nsfw;
+  const size_t offset;
+  const char *content;
+  const char *mentions;
+  const bool pinned;
 };
 
 struct SearchResponse {
-  struct DiscordMessage* messages;
-  unsigned int length;
+  struct DiscordMessage *messages;
+  size_t length;
 };
 
-unsigned char discrub_delete_message(BIO *bio, const char* token, const char *channel_id, const char *message_id, char **error);
+bool discrub_delete_message(BIO *connection, const char *token,
+                            const char *channel_id, const char *message_id,
+                            enum DiscrubError *error);
 
-struct SearchResponse* discrub_search_messages(BIO *bio, const char *token, const char *server_id, struct SearchOpts *options, char **error);
+struct SearchResponse *discrub_search(BIO *connection, const char *token,
+                                      const char *server_id,
+                                      struct SearchOptions *options,
+                                      enum DiscrubError *error);
+
+const char *discrub_strerror(enum DiscrubError *error);
 
 #endif
