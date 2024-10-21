@@ -4,6 +4,7 @@
 
 struct HTTPResponse *http_request(BIO *connection, const char *request,
                                   enum HTTPError *error) {
+  BIO_reset(connection);
   if (BIO_write(connection, request, strlen(request)) <= 0) {
     *error = HTTP_EBIO;
     return NULL;

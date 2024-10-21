@@ -18,15 +18,25 @@ void fetch_messages(BIO *connection, const char *token, const char *server_id,
     size_t i = 0;
     for (; i < response->length; i++) {
         struct DiscordMessage message = response->messages[i];
-        printf("[%s] %s: %s\n", message.timestamp, message.author_username,
+        printf("Deleting message %s...\n[%s] %s: %s\n", message.id, message.timestamp, message.author_username,
                message.content);
+        if (discrub_delete_message(connection, token, options->channel_id, message.id, error)) {
+          fprintf(stderr, "Failed to delete message %s: %s\n", message.id, discrub_strerror(error));
+          discrub_free_search_response(response);
+          return;
+        }
+        printf("Deleted message %s successfully.\n\n", message.id);
+#ifdef _WIN32
+        Sleep(2000);
+#else
+        sleep(2);
+#endif
     }
     
     options->offset += response->length;
 
     if (response->length > 0) {
         discrub_free_search_response(response);
-        BIO_reset(connection);
 #ifdef _WIN32
         Sleep(5000);
 #else
