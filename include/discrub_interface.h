@@ -21,11 +21,11 @@ enum DiscrubError {
 };
 
 struct DiscordMessage {
-  const char *author_id;
-  const char *author_username;
-  const char *content;
-  const char *id;
-  const char *timestamp;
+  char *author_id;
+  char *author_username;
+  char *content;
+  char *id;
+  char *timestamp;
 };
 
 struct SearchOptions {
@@ -53,5 +53,7 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
                                       enum DiscrubError *error);
 
 const char *discrub_strerror(enum DiscrubError *error);
+
+void discrub_free_search_response(struct SearchResponse *response);
 
 #endif

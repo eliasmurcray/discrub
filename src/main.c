@@ -45,8 +45,14 @@ int main(int argc, char **argv) {
   struct SearchResponse *response = discrub_search(connection, argv[1], server_id, &options, error);
   if (response) {
     printf("Response received successfully.\n");
-    free(response->messages);
-    free(response);
+
+    size_t i = 0;
+    for (; i < response->length; i++) {
+      struct DiscordMessage message = response->messages[i];
+      printf("[%s] %s: %s\n", message.timestamp, message.author_username, message.content);
+    }
+
+    discrub_free_search_response(response);
   }
 
   if (error) {

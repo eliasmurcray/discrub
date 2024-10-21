@@ -49,7 +49,7 @@ static char *get_params(struct SearchOptions *options) {
   return params;
 }
 
-static char *fmt_timestamp(const char* timestamp) {
+static char *fmt_timestamp(const char *timestamp) {
   struct tm tm;
   memset(&tm, 0, sizeof(struct tm));
   if (strptime(timestamp, "%Y-%m-%dT%H:%M:%S", &tm) == NULL) return NULL;
@@ -218,9 +218,25 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
     *error = DISCRUB_EPARSE;
     return NULL;
   }
-
   struct JsonArray *message_containers = messages_array->as_array;
-  printf("Length of message_containers array: %zu\n", message_containers->length);
+  struct SearchResponse *search_response = malloc(sizeof(struct SearchResponse));
+  if (!search_response) {
+    jsontok_free(messages_subarray);
+    jsontok_free(response_object);
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+
+  search_response->messages = malloc(message_containers->length * sizeof(struct DiscordMessage));
+  if (!search_response->messages) {
+    free(search_response);
+    jsontok_free(messages_subarray);
+    jsontok_free(response_object);
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+
+  search_response->length = message_containers->length;
   size_t i = 0;
   for (; i < message_containers->length; i++) {
     struct JsonToken *message_container_token = message_containers->elements[i];
@@ -228,49 +244,89 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
       printf("Message container token at %zu is NULL\n", i);
       break;
     }
+
     struct JsonToken *message_container_array = jsontok_parse(message_container_token->as_string, &json_error);
-    if (!message_container_array) {
-      printf("Error in parsing message container subarray at index %zu: %s\n\n%s\n", i, jsontok_strerror(json_error), message_container_token->as_string);
-      break;
-    }
-    if (message_container_array->type != JSON_ARRAY || message_container_array->as_array->length != 1) {
+    if (!message_container_array ||
+        message_container_array->type != JSON_ARRAY ||
+        message_container_array->as_array->length != 1) {
+      printf("Invalid message container array at index %zu\n", i);
       jsontok_free(message_container_array);
       break;
     }
+
     struct JsonToken *message_token = message_container_array->as_array->elements[0];
     if (message_token->type != JSON_WRAPPED_OBJECT) {
       jsontok_free(message_container_array);
       break;
     }
+
     struct JsonToken *message_object = jsontok_parse(message_token->as_string, &json_error);
     if (!message_object) {
-      printf("Error in parsing message token at index %zu: %s\n\n%s\n", i, jsontok_strerror(json_error), message_token->as_string);
+      printf("Error in parsing message token at index %zu: %s\n\n%s\n",
+             i, jsontok_strerror(json_error), message_token->as_string);
       jsontok_free(message_container_array);
       break;
     }
+
     struct JsonToken *author_token = jsontok_get(message_object->as_object, "author");
     if (!author_token || author_token->type != JSON_WRAPPED_OBJECT) {
       jsontok_free(message_container_array);
       break;
     }
+
     struct JsonToken *author_object = jsontok_parse(author_token->as_string, &json_error);
     if (!author_object) {
       jsontok_free(message_container_array);
       break;
     }
-    char *author_id = jsontok_get(author_object->as_object, "id")->as_string;
-    char *author_username = jsontok_get(author_object->as_object, "username")->as_string;
-    char *content = jsontok_get(message_object->as_object, "content")->as_string;
-    char *id = jsontok_get(message_object->as_object, "id")->as_string;
-    char *timestamp = jsontok_get(message_object->as_object, "timestamp")->as_string;
-    char *formatted = fmt_timestamp(timestamp);
-    printf("[%s] %s (%s) %s {%s}\n", formatted, author_id, author_username, content, id);
+
+    struct JsonToken *id_token = jsontok_get(message_object->as_object, "id");
+    struct JsonToken *content_token = jsontok_get(message_object->as_object, "content");
+    struct JsonToken *timestamp_token = jsontok_get(message_object->as_object, "timestamp");
+    struct JsonToken *author_id_token = jsontok_get(author_object->as_object, "id");
+    struct JsonToken *author_username_token = jsontok_get(author_object->as_object, "username");
+
+    if (!id_token || id_token->type != JSON_STRING ||
+        !content_token || content_token->type != JSON_STRING ||
+        !timestamp_token || timestamp_token->type != JSON_STRING ||
+        !author_id_token || author_id_token->type != JSON_STRING ||
+        !author_username_token || author_username_token->type != JSON_STRING) {
+      printf("Missing or invalid fields in message object at index %zu\n", i);
+      jsontok_free(message_container_array);
+      break;
+    }
+
+    struct DiscordMessage *message = &search_response->messages[i];
+    message->id = strdup(id_token->as_string);
+    message->content = strdup(content_token->as_string);
+    message->timestamp = strdup(fmt_timestamp(timestamp_token->as_string));
+    message->author_id = strdup(author_id_token->as_string);
+    message->author_username = strdup(author_username_token->as_string);
+
     jsontok_free(message_container_array);
   }
+
   jsontok_free(messages_array);
   jsontok_free(response_object);
   free(json_string);
-  return NULL;
+  return search_response;
+}
+
+void discrub_free_search_response(struct SearchResponse *response) {
+  if (!response) return;
+
+  size_t i = 0;
+  for (; i < response->length; i++) {
+    struct DiscordMessage *message = &response->messages[i];
+    free(message->id);
+    free(message->content);
+    free(message->timestamp);
+    free(message->author_id);
+    free(message->author_username);
+  }
+
+  free(response->messages);
+  free(response);
 }
 
 const char *discrub_strerror(enum DiscrubError *error) {
