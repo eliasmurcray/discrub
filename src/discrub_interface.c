@@ -61,6 +61,7 @@ static char *fmt_timestamp(const char *timestamp) {
   char *new_timestamp = malloc(strlen(buffer) + 1);
   if (!new_timestamp) return NULL;
   strncpy(new_timestamp, buffer, strlen(buffer));
+  new_timestamp[strlen(buffer)] = '\0';
   return new_timestamp;
 }
 
@@ -133,12 +134,12 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
   char *request_string = malloc(request_size);
   snprintf(request_string, request_size, request_fmt, server_id, params, token);
   free(params);
-  enum HTTPError *http_error = NULL;
+  enum HTTPError http_error = HTTP_ENOERR;
   struct HTTPResponse *response =
-      http_request(connection, request_string, http_error);
+      http_request(connection, request_string, &http_error);
   if (http_error) {
     printf("Error while fetching: %s\n\nWith request: %s\n",
-           http_strerror(http_error), request_string);
+           http_strerror(&http_error), request_string);
     free(request_string);
     *error = DISCRUB_EHTTP;
     return NULL;
@@ -302,7 +303,7 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
     message->timestamp = strdup(fmt_timestamp(timestamp_token->as_string));
     message->author_id = strdup(author_id_token->as_string);
     message->author_username = strdup(author_username_token->as_string);
-
+    
     jsontok_free(message_container_array);
   }
 

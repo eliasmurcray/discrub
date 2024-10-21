@@ -15,6 +15,7 @@ struct HTTPResponse {
 };
 
 enum HTTPError {
+  HTTP_ENOERR,
   HTTP_ENOMEM,
   HTTP_EBIO,
   HTTP_EPARSE,

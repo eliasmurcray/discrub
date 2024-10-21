@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=c89 -Ofast -Wall -Wextra -g
+CFLAGS = -std=c89 -Ofast -Wall -Wextra -g -fsanitize=address
 LIBS = `pkg-config openssl --cflags --libs`
 TARGET = build/main
 SRCS = $(wildcard src/**.c)

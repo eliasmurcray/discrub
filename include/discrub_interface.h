@@ -14,6 +14,7 @@
 #include "openssl_helpers.h"
 
 enum DiscrubError {
+  DISCRUB_ENOERR,
   DISCRUB_ENOMEM,
   DISCRUB_EARGS,
   DISCRUB_EHTTP,
@@ -29,13 +30,13 @@ struct DiscordMessage {
 };
 
 struct SearchOptions {
-  const char *author_id;
-  const char *channel_id;
-  const bool include_nsfw;
-  const size_t offset;
-  const char *content;
-  const char *mentions;
-  const bool pinned;
+  char *author_id;
+  char *channel_id;
+  bool include_nsfw;
+  size_t offset;
+  char *content;
+  char *mentions;
+  bool pinned;
 };
 
 struct SearchResponse {

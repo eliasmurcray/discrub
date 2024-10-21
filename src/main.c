@@ -1,7 +1,43 @@
 #include <openssl/ssl.h>
 #include <stdio.h>
-
 #include "discrub_interface.h"
+#include <unistd.h>
+#ifdef _WIN32
+  #include <windows.h>
+#endif
+
+void fetch_messages(BIO *connection, const char *token, const char *server_id,
+                    struct SearchOptions *options, enum DiscrubError *error) {
+    struct SearchResponse *response = discrub_search(connection, token,
+                                                     server_id, options, error);
+    if (!response) {
+        fprintf(stderr, "Failed to fetch messages: %s\n", discrub_strerror(error));
+        return;
+    }
+
+    size_t i = 0;
+    for (; i < response->length; i++) {
+        struct DiscordMessage message = response->messages[i];
+        printf("[%s] %s: %s\n", message.timestamp, message.author_username,
+               message.content);
+    }
+    
+    options->offset += response->length;
+
+    if (response->length > 0) {
+        discrub_free_search_response(response);
+        BIO_reset(connection);
+#ifdef _WIN32
+        Sleep(5000);
+#else
+        sleep(5);
+#endif
+        fetch_messages(connection, token, server_id, options, error);
+    } else {
+        discrub_free_search_response(response);
+        printf("No more messages found.\n");
+    }
+}
 
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -35,29 +71,16 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  enum DiscrubError *error = NULL;
+  enum DiscrubError error;
   struct SearchOptions options = {
       .author_id = "1013504042011459594",
       .include_nsfw = 1,
       .channel_id = "1083661464981741588"};
   const char *server_id = "894349669499568148";
-
-  struct SearchResponse *response = discrub_search(connection, argv[1], server_id, &options, error);
-  if (response) {
-    printf("Response received successfully.\n");
-
-    size_t i = 0;
-    for (; i < response->length; i++) {
-      struct DiscordMessage message = response->messages[i];
-      printf("[%s] %s: %s\n", message.timestamp, message.author_username, message.content);
-    }
-
-    discrub_free_search_response(response);
-  }
+  fetch_messages(connection, argv[1], server_id, &options, &error);
 
   if (error) {
-    fprintf(stderr, "Failed to search messages: %s\n", discrub_strerror(error));
-    free(error);
+    fprintf(stderr, "Failed to search messages: %s\n", discrub_strerror(&error));
   }
 
   BIO_free_all(connection);
