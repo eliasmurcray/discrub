@@ -3,6 +3,7 @@
 
 # Build
 build/
+options.json
 
 # Ignore Mac DS_Store files
 .DS_Store

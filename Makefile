@@ -3,7 +3,7 @@ CFLAGS = -std=c89 -Ofast -Wall -Wextra
 LIBS = `pkg-config openssl --cflags --libs`
 TARGET = build/discrub
 SRCS = $(wildcard src/**.c)
-INCLUDE = -Iinclude
+NCLUDE = -Iinclude
 
 all: $(TARGET)
 
