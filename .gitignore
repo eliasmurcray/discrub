@@ -1,3 +1,6 @@
+# Secrets
+.discrub_cache
+
 # Build
 build/
 

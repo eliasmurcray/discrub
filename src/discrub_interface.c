@@ -87,12 +87,12 @@ bool discrub_delete_message(BIO *connection, const char *token,
   }
   snprintf(request_string, request_size, request_fmt, channel_id, message_id,
            token);
-  enum HTTPError *http_error = NULL;
+  enum HTTPError http_error = HTTP_ENOERR;
   struct HTTPResponse *response =
-      http_request(connection, request_string, http_error);
-  if (!response) {
+      http_request(connection, request_string, &http_error);
+  if (http_error) {
     printf("Error while fetching: %s\n\nWith request: %s\n",
-           http_strerror(http_error), request_string);
+           http_strerror(&http_error), request_string);
     free(request_string);
     *error = DISCRUB_EHTTP;
     return false;
@@ -298,12 +298,56 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
     }
 
     struct DiscordMessage *message = &search_response->messages[i];
-    message->id = strdup(id_token->as_string);
-    message->content = strdup(content_token->as_string);
-    message->timestamp = strdup(fmt_timestamp(timestamp_token->as_string));
-    message->author_id = strdup(author_id_token->as_string);
-    message->author_username = strdup(author_username_token->as_string);
-    
+    message->id = malloc(strlen(id_token->as_string) + 1);
+    if (!message->id) {
+      free(message);
+      *error = DISCRUB_ENOMEM;
+      return NULL;
+    }
+    strcpy(message->id, id_token->as_string);
+
+    message->content = malloc(strlen(content_token->as_string) + 1);
+    if (!message->content) {
+      free(message->id);
+      free(message);
+      *error = DISCRUB_ENOMEM;
+      return NULL;
+    }
+    strcpy(message->content, content_token->as_string);
+
+    message->timestamp = malloc(strlen(fmt_timestamp(timestamp_token->as_string)) + 1);
+    if (!message->timestamp) {
+      free(message->content);
+      free(message->id);
+      free(message);
+      *error = DISCRUB_ENOMEM;
+      return NULL;
+    }
+    strcpy(message->timestamp, fmt_timestamp(timestamp_token->as_string));
+
+    message->author_id = malloc(strlen(author_id_token->as_string) + 1);
+    if (!message->author_id) {
+      free(message->timestamp);
+      free(message->content);
+      free(message->id);
+      free(message);
+      *error = DISCRUB_ENOMEM;
+      return NULL;
+    }
+    strcpy(message->author_id, author_id_token->as_string);
+
+    message->author_username = malloc(strlen(author_username_token->as_string) + 1);
+    if (!message->author_username) {
+      free(message->author_id);
+      free(message->timestamp);
+      free(message->content);
+      free(message->id);
+      free(message);
+      *error = DISCRUB_ENOMEM;
+      return NULL;
+    }
+    strcpy(message->author_username, author_username_token->as_string);
+
     jsontok_free(message_container_array);
   }
 
@@ -328,6 +372,136 @@ void discrub_free_search_response(struct SearchResponse *response) {
 
   free(response->messages);
   free(response);
+}
+
+struct LoginResponse *discrub_login(BIO *connection, const char *username, const char *password, enum DiscrubError *error) {
+  if (!connection || !username || !password) {
+    *error = DISCRUB_EARGS;
+    return NULL;
+  }
+  const char *request_fmt =
+      "POST /api/v9/auth/login HTTP/1.1\r\n"
+      "Host: discord.com\r\n"
+      "Content-Type: application/json\r\n"
+      "Content-Length: %d\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "{"
+      "\"gift_code_sku_id\":null,"
+      "\"login\":\"%s\","
+      "\"login_source\":null,"
+      "\"password\":\"%s\","
+      "\"undelete\":false"
+      "}";
+  size_t json_size = snprintf(NULL, 0,
+                              "{"
+                              "\"gift_code_sku_id\":null,"
+                              "\"login\":\"%s\","
+                              "\"login_source\":null,"
+                              "\"password\":\"%s\","
+                              "\"undelete\":false"
+                              "}",
+                              username, password);
+  size_t request_size =
+      snprintf(NULL, 0, request_fmt, (int)json_size, username, password) + 1;
+  char *request_string = malloc(request_size);
+  if (!request_string) {
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+  snprintf(request_string, request_size, request_fmt, (int)json_size, username, password);
+  enum HTTPError http_error = HTTP_ENOERR;
+  struct HTTPResponse *response =
+      http_request(connection, request_string, &http_error);
+  if (http_error) {
+    printf("Error while fetching: %s\n\nWith request: %s\n",
+           http_strerror(&http_error), request_string);
+    free(request_string);
+    *error = DISCRUB_EHTTP;
+    return false;
+  }
+  free(request_string);
+  if (!response) {
+    printf("Failed to log in: No response\n");
+    return NULL;
+  }
+  if (response->code != 200) {
+    printf("Failed to log in: Status code is %hu\n", response->code);
+    return NULL;
+  }
+  if (!strtok(response->data, "\n")) {
+    free(response);
+    *error = DISCRUB_EHTTP;
+    return NULL;
+  }
+
+  const char *json_start = strtok(NULL, "\n");
+  const char *json_end = strtok(NULL, "\n");
+
+  if (!json_start || !json_end) {
+    free(response);
+    *error = DISCRUB_EHTTP;
+    return NULL;
+  }
+
+  size_t json_length = json_end - json_start;
+  char *json_string = malloc(json_length + 1);
+  if (!json_string) {
+    free(response);
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+  strncpy(json_string, json_start, json_length);
+  json_string[json_length] = '\0';
+  free(response);
+
+  enum JsonError json_error = JSON_ENOERR;
+  struct JsonToken *response_object = jsontok_parse(json_string, &json_error);
+  if (!response_object) {
+    printf("Error parsing response JSON: %s\n", jsontok_strerror(json_error));
+    *error = DISCRUB_EPARSE;
+    return NULL;
+  }
+
+  if (response_object->type != JSON_OBJECT) {
+    *error = DISCRUB_EPARSE;
+    return NULL;
+  }
+
+  struct JsonToken *token_string = jsontok_get(response_object->as_object, "token");
+  struct JsonToken *user_id_string = jsontok_get(response_object->as_object, "user_id");
+  if (!token_string || token_string->type != JSON_STRING || !user_id_string || user_id_string->type != JSON_STRING) {
+    jsontok_free(response_object);
+    *error = DISCRUB_EPARSE;
+    return NULL;
+  }
+
+  struct LoginResponse *login_response = malloc(sizeof(struct LoginResponse));
+  if (!login_response) {
+    jsontok_free(response_object);
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+  login_response->token = malloc(strlen(token_string->as_string) + 1);
+  if (!login_response->token) {
+    free(login_response);
+    jsontok_free(response_object);
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+  strcpy(login_response->token, token_string->as_string);
+
+  login_response->user_id = malloc(strlen(user_id_string->as_string) + 1);
+  if (!login_response->user_id) {
+    free(login_response->token);
+    free(login_response);
+    jsontok_free(response_object);
+    *error = DISCRUB_ENOMEM;
+    return NULL;
+  }
+  strcpy(login_response->user_id, user_id_string->as_string);
+
+  return login_response;
 }
 
 const char *discrub_strerror(enum DiscrubError *error) {

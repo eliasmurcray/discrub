@@ -1,7 +1,7 @@
 CC = gcc
-CFLAGS = -std=c89 -Ofast -Wall -Wextra -g -fsanitize=address
+CFLAGS = -std=c89 -Ofast -Wall -Wextra
 LIBS = `pkg-config openssl --cflags --libs`
-TARGET = build/main
+TARGET = build/discrub
 SRCS = $(wildcard src/**.c)
 INCLUDE = -Iinclude
 
@@ -12,6 +12,6 @@ $(TARGET): $(SRCS)
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS)
 
 clean:
-	rm -rf $(TARGET) 
+	rm -rf $(dir $(TARGET))
 
 .PHONY: all clean

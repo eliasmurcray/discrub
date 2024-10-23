@@ -44,6 +44,11 @@ struct SearchResponse {
   size_t length;
 };
 
+struct LoginResponse {
+  char *token;
+  char *user_id;
+};
+
 bool discrub_delete_message(BIO *connection, const char *token,
                             const char *channel_id, const char *message_id,
                             enum DiscrubError *error);
@@ -52,6 +57,8 @@ struct SearchResponse *discrub_search(BIO *connection, const char *token,
                                       const char *server_id,
                                       struct SearchOptions *options,
                                       enum DiscrubError *error);
+
+struct LoginResponse *discrub_login(BIO *connection, const char *username, const char *password, enum DiscrubError *error);
 
 const char *discrub_strerror(enum DiscrubError *error);
 

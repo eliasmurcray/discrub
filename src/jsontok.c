@@ -576,9 +576,14 @@ static char *jsontok_parse_sub_object(const char **json_string, enum JsonError *
 }
 
 static char *jsontok_parse_sub_array(const char **json_string, enum JsonError *error) {
-  char *ptr = (char *)(*json_string + 1);
+  const char *ptr = *json_string;
+  if (*ptr != '[') {
+    *error = JSON_EFMT;
+    return NULL;
+  }
+  ptr++;
   size_t counter = 1;
-  while (counter > 1 || *ptr != ']') {
+  while (counter > 0) {
     if (*ptr == '\0') {
       *error = JSON_EFMT;
       return NULL;
@@ -587,16 +592,17 @@ static char *jsontok_parse_sub_array(const char **json_string, enum JsonError *e
       counter++;
     else if (*ptr == ']')
       counter--;
-    ptr += (*ptr == '\\') + 1;
+    ptr++;
+    if (*(ptr - 1) == '\\' && *ptr != '\0') ptr++;
   }
-  size_t length = ptr - *json_string + 1;
+  size_t length = ptr - *json_string;
   char *substr = malloc(length + 1);
   if (!substr) {
-    *error = JSON_EFMT;
+    *error = JSON_ENOMEM;
     return NULL;
   }
   strncpy(substr, *json_string, length);
   substr[length] = '\0';
-  *json_string = ptr + 1;
+  *json_string = ptr;
   return substr;
 }
