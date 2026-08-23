@@ -74,6 +74,7 @@ target_link_libraries(discord PRIVATE OpenSSL::SSL net common yyjson xcord_optio
 add_executable(main
   src/main.c
   src/cli/cli.c
+  src/cli/scope.c
   src/cli/cmd_login.c
   src/cli/cmd_whoami.c
   src/cli/cmd_guilds.c
