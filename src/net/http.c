@@ -1,10 +1,10 @@
 #include "http.h"
+#include "common/strutil.h"
 #include "err.h"
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #define INITIAL_HDR_CAP 8192
 #define INITIAL_BODY_CAP 16384
@@ -104,7 +104,7 @@ static hdr_info_t parse_headers(const char *hdrs, size_t hdrs_len) {
     size_t pos = 0;
     bool first = true;
     while (pos < hdrs_len) {
-        const char *eol = memmem(hdrs + pos, hdrs_len - pos, "\r\n", 2);
+        const char *eol = find_bytes(hdrs + pos, hdrs_len - pos, "\r\n", 2);
         size_t eol_pos = eol ? (size_t)(eol - hdrs) : hdrs_len;
         size_t line_len = eol_pos - pos;
         if (first) {
@@ -125,19 +125,16 @@ static hdr_info_t parse_headers(const char *hdrs, size_t hdrs_len) {
                 }
                 size_t val_len = (size_t)(line_end - val);
                 if (name_len == sizeof("Retry-After") - 1 &&
-                    strncasecmp(name, "Retry-After", name_len) == 0) {
+                    ci_eq_n(name, "Retry-After", name_len)) {
                     h.retry_after_ms = parse_secs_ms(val, val_len);
                 } else if (name_len == sizeof("X-RateLimit-Remaining") - 1 &&
-                           strncasecmp(name, "X-RateLimit-Remaining",
-                                       name_len) == 0) {
+                           ci_eq_n(name, "X-RateLimit-Remaining", name_len)) {
                     h.rl_remaining = parse_long(val, val_len);
                 } else if (name_len == sizeof("X-RateLimit-Reset-After") - 1 &&
-                           strncasecmp(name, "X-RateLimit-Reset-After",
-                                       name_len) == 0) {
+                           ci_eq_n(name, "X-RateLimit-Reset-After", name_len)) {
                     h.rl_reset_ms = parse_secs_ms(val, val_len);
                 } else if (name_len == sizeof("X-RateLimit-Bucket") - 1 &&
-                           strncasecmp(name, "X-RateLimit-Bucket", name_len) ==
-                               0) {
+                           ci_eq_n(name, "X-RateLimit-Bucket", name_len)) {
                     char *bucket_copy = malloc(val_len + 1);
                     if (bucket_copy) {
                         memcpy(bucket_copy, val, val_len);
@@ -146,15 +143,14 @@ static hdr_info_t parse_headers(const char *hdrs, size_t hdrs_len) {
                         h.bucket = bucket_copy;
                     }
                 } else if (name_len == sizeof("Connection") - 1 &&
-                           strncasecmp(name, "Connection", name_len) == 0) {
+                           ci_eq_n(name, "Connection", name_len)) {
                     h.close = val_len == sizeof("close") - 1 &&
-                              strncasecmp(val, "close", val_len) == 0;
+                              ci_eq_n(val, "close", val_len);
                 } else if (name_len == sizeof("Transfer-Encoding") - 1 &&
-                           strncasecmp(name, "Transfer-Encoding", name_len) ==
-                               0) {
+                           ci_eq_n(name, "Transfer-Encoding", name_len)) {
                     h.chunked = true;
                 } else if (name_len == sizeof("Content-Length") - 1 &&
-                           strncasecmp(name, "Content-Length", name_len) == 0) {
+                           ci_eq_n(name, "Content-Length", name_len)) {
                     h.content_len = parse_long(val, val_len);
                 }
             }
@@ -179,7 +175,7 @@ static char *read_chunked(SSL *ssl, char *buf, size_t cap, size_t have) {
     size_t pos = 0;
     for (;;) {
         char *eol;
-        while (!(eol = memmem(buf + pos, have - pos, "\r\n", 2))) {
+        while (!(eol = find_bytes(buf + pos, have - pos, "\r\n", 2))) {
             if (have >= cap) {
                 cap *= 2;
                 char *tmp = realloc(buf, cap);
@@ -342,7 +338,7 @@ int http_request(SSL *ssl, const http_request_t *req, http_response_t *resp) {
     size_t have = 0;
     char *hdr_end = NULL;
     for (;;) {
-        hdr_end = have >= 4 ? memmem(buf, have, "\r\n\r\n", 4) : NULL;
+        hdr_end = have >= 4 ? find_bytes(buf, have, "\r\n\r\n", 4) : NULL;
         if (hdr_end) {
             break;
         }

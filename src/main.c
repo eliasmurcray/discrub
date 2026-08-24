@@ -28,11 +28,17 @@ int main(int argc, char **argv) {
         fprintf(stderr, "failed to initialize sodium");
         return 1;
     }
+    if (net_init() != 0) {
+        fprintf(stderr, "failed to initialize networking: %s\n",
+                net_strerror(net_errno));
+        return 1;
+    }
     if (argc < 2) {
         fprintf(stderr, "usage: xcord <command> [args]\ncommands:\n");
         for (size_t i = 0; i < sizeof(commands) / sizeof(commands[0]); i++) {
             fprintf(stderr, "  %s\n", commands[i].name);
         }
+        net_shutdown();
         return 1;
     }
     const cli_command_t *matched = NULL;
@@ -44,6 +50,7 @@ int main(int argc, char **argv) {
     }
     if (!matched) {
         fprintf(stderr, "unknown command: %s\n", argv[1]);
+        net_shutdown();
         return 1;
     }
     SSL_CTX *ctx = NULL;
@@ -53,12 +60,14 @@ int main(int argc, char **argv) {
         if (!ctx) {
             fprintf(stderr, "failed to create ssl context: %s\n",
                     net_strerror(net_errno));
+            net_shutdown();
             return 1;
         }
         ssl = ssl_connect(ctx, "discord.com", 443);
         if (!ssl) {
             fprintf(stderr, "failed to connect: %s\n", net_strerror(net_errno));
             SSL_CTX_free(ctx);
+            net_shutdown();
             return 1;
         }
     }
@@ -70,5 +79,6 @@ int main(int argc, char **argv) {
     if (ctx) {
         SSL_CTX_free(ctx);
     }
+    net_shutdown();
     return result;
 }

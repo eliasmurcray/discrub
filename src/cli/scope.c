@@ -1,4 +1,5 @@
 #include "scope.h"
+#include "common/strutil.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,16 +8,6 @@ typedef struct {
     const char *id;
     const char *name;
 } scope_candidate_t;
-
-static char *dup_str(const char *s) {
-    size_t n = strlen(s) + 1;
-    char *copy = malloc(n);
-    if (!copy) {
-        return NULL;
-    }
-    memcpy(copy, s, n);
-    return copy;
-}
 
 static int is_snowflake(const char *s) {
     size_t len = strlen(s);
@@ -36,44 +27,6 @@ static const char *strip_prefix(const char *query) {
         return query + 1;
     }
     return query;
-}
-
-static int char_eq_ci(char a, char b) {
-    if (a >= 'A' && a <= 'Z') {
-        a = (char)(a - 'A' + 'a');
-    }
-    if (b >= 'A' && b <= 'Z') {
-        b = (char)(b - 'A' + 'a');
-    }
-    return a == b;
-}
-
-static int str_eq_ci(const char *a, const char *b) {
-    while (*a && *b) {
-        if (!char_eq_ci(*a, *b)) {
-            return 0;
-        }
-        a++;
-        b++;
-    }
-    return *a == '\0' && *b == '\0';
-}
-
-static int str_contains_ci(const char *haystack, const char *needle) {
-    size_t needle_len = strlen(needle);
-    if (needle_len == 0) {
-        return 1;
-    }
-    for (const char *h = haystack; *h; h++) {
-        size_t i = 0;
-        while (i < needle_len && h[i] && char_eq_ci(h[i], needle[i])) {
-            i++;
-        }
-        if (i == needle_len) {
-            return 1;
-        }
-    }
-    return 0;
 }
 
 static ScopeStatus take_candidate(const scope_candidate_t *candidate,

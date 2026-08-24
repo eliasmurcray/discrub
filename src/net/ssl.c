@@ -1,12 +1,38 @@
-#include "ssl.h"
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 #include "err.h"
+#include "ssl.h"
+#include <stdio.h>
+#include <string.h>
+#if defined(_WIN32)
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <stdio.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
+
+int net_init(void) {
+#if defined(_WIN32)
+    WSADATA wsa_data;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+        net_errno = NET_ECTX;
+        return -1;
+    }
+#endif
+    return 0;
+}
+
+void net_shutdown(void) {
+#if defined(_WIN32)
+    WSACleanup();
+#endif
+}
 
 SSL_CTX *ssl_ctx_new(void) {
     SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
@@ -39,34 +65,56 @@ SSL *ssl_connect(SSL_CTX *ctx, const char *hostname, uint16_t port) {
         net_errno = NET_ERESOLVE;
         return NULL;
     }
+#if defined(_WIN32)
+    SOCKET sockfd = INVALID_SOCKET;
+#else
     int sockfd = -1;
+#endif
     for (struct addrinfo *addr = results; addr; addr = addr->ai_next) {
         sockfd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+#if defined(_WIN32)
+        if (sockfd == INVALID_SOCKET) {
+            continue;
+        }
+#else
         if (sockfd < 0) {
             continue;
         }
+#endif
         if (connect(sockfd, addr->ai_addr, addr->ai_addrlen) == 0) {
             break;
         }
+#if defined(_WIN32)
+        closesocket(sockfd);
+        sockfd = INVALID_SOCKET;
+#else
         close(sockfd);
         sockfd = -1;
+#endif
     }
     freeaddrinfo(results);
+#if defined(_WIN32)
+    if (sockfd == INVALID_SOCKET) {
+        net_errno = NET_ECONNECT;
+        return NULL;
+    }
+#else
     if (sockfd < 0) {
         net_errno = NET_ECONNECT;
         return NULL;
     }
+#endif
     struct timeval tv = {.tv_sec = 30, .tv_usec = 0};
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
     int flag = 1;
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag)) ==
-        -1) {
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (const char *)&flag,
+                   sizeof(flag)) != 0) {
         net_errno = NET_ESOCK;
         goto fail_sock;
     }
-    if (setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &flag, sizeof(flag)) ==
-        -1) {
+    if (setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (const char *)&flag,
+                   sizeof(flag)) != 0) {
         net_errno = NET_ESOCK;
         goto fail_sock;
     }
@@ -75,7 +123,7 @@ SSL *ssl_connect(SSL_CTX *ctx, const char *hostname, uint16_t port) {
         net_errno = NET_ESSL;
         goto fail_sock;
     }
-    SSL_set_fd(ssl, sockfd);
+    SSL_set_fd(ssl, (int)sockfd);
     if (!SSL_set_tlsext_host_name(ssl, hostname)) {
         net_errno = NET_ESSL;
         goto fail_ssl;
@@ -100,7 +148,7 @@ SSL *ssl_connect(SSL_CTX *ctx, const char *hostname, uint16_t port) {
 fail_ssl:
     SSL_free(ssl);
 fail_sock:
-#ifdef _WIN32
+#if defined(_WIN32)
     closesocket(sockfd);
 #else
     close(sockfd);
@@ -109,14 +157,14 @@ fail_sock:
 }
 
 void ssl_disconnect(SSL *ssl) {
-#ifdef _WIN32
-    SOCKET sockfd = SSL_get_fd(ssl);
+#if defined(_WIN32)
+    SOCKET sockfd = (SOCKET)SSL_get_fd(ssl);
 #else
     int sockfd = SSL_get_fd(ssl);
 #endif
     SSL_shutdown(ssl);
     SSL_free(ssl);
-#ifdef _WIN32
+#if defined(_WIN32)
     closesocket(sockfd);
 #else
     close(sockfd);

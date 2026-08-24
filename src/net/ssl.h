@@ -1,8 +1,10 @@
 #pragma once
 #include <openssl/ssl.h>
-#include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <stdint.h>
+
+int net_init(void);
+void net_shutdown(void);
 
 SSL_CTX *ssl_ctx_new(void);
 

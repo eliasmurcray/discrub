@@ -1,4 +1,5 @@
 #include "ratelimit.h"
+#include "common/strutil.h"
 #include <errno.h>
 #include <openssl/rand.h>
 #include <stdint.h>
@@ -73,16 +74,6 @@ static long jitter_ms(long max_ms) {
     uint32_t value = ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) |
                      ((uint32_t)buf[2] << 8) | (uint32_t)buf[3];
     return (long)(value % (uint32_t)(max_ms + 1));
-}
-
-static char *dup_str(const char *s) {
-    size_t n = strlen(s) + 1;
-    char *copy = malloc(n);
-    if (!copy) {
-        return NULL;
-    }
-    memcpy(copy, s, n);
-    return copy;
 }
 
 static int ensure_cap(char **buf, size_t *cap, size_t needed) {

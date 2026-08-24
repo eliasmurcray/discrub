@@ -46,6 +46,14 @@ FetchContent_Declare(
 set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_DEMO OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(cargs)
+add_library(common
+  src/common/strbuf.c
+  src/common/base64.c
+  src/common/tty.c
+  src/common/strutil.c
+)
+target_include_directories(common PUBLIC src/)
+target_link_libraries(common PRIVATE xcord_options)
 add_library(net
   src/net/ssl.c
   src/net/http.c
@@ -53,19 +61,15 @@ add_library(net
   src/net/ratelimit.c
 )
 target_include_directories(net PUBLIC src/)
-target_link_libraries(net PUBLIC OpenSSL::SSL OpenSSL::Crypto PRIVATE xcord_options)
+target_link_libraries(net PUBLIC OpenSSL::SSL OpenSSL::Crypto PRIVATE common xcord_options)
+if(WIN32)
+  target_link_libraries(net PRIVATE ws2_32)
+endif()
 add_library(credentials
     src/credentials/credentials.c
 )
 target_include_directories(credentials PUBLIC src/)
 target_link_libraries(credentials PUBLIC PkgConfig::sodium PRIVATE xcord_options)
-add_library(common
-  src/common/strbuf.c
-  src/common/base64.c
-  src/common/tty.c
-)
-target_include_directories(common PUBLIC src/)
-target_link_libraries(common PRIVATE xcord_options)
 add_library(discord
   src/discord/discord.c
 )

@@ -1,6 +1,7 @@
 #include "discord.h"
 #include "common/base64.h"
 #include "common/strbuf.h"
+#include "common/strutil.h"
 #include "net/http.h"
 #include "net/ratelimit.h"
 #include <stdarg.h>
@@ -128,7 +129,7 @@ static char *json_dup_str(yyjson_val *obj, const char *key) {
     if (!str) {
         return NULL;
     }
-    return strdup(str);
+    return dup_str(str);
 }
 
 static bool json_get_bool(yyjson_val *obj, const char *key) {
