@@ -17,15 +17,14 @@ typedef struct {
 } cli_command_t;
 
 static const cli_command_t commands[] = {
-    {"login", cmd_login, true},
-    {"whoami", cmd_whoami, true},
-    {"guilds", cmd_guilds, true},
-    {"logout", cmd_logout, false},
+    {"login", cmd_login, true},   {"whoami", cmd_whoami, true},
+    {"guilds", cmd_guilds, true}, {"logout", cmd_logout, false},
+    {"purge", cmd_purge, true},   {"channels", cmd_channels, true},
 };
 
 int main(int argc, char **argv) {
-    if (sodium_init() == -1) {
-        fprintf(stderr, "failed to initialize sodium");
+    if (sodium_init() < 0) {
+        fprintf(stderr, "failed to initialize libsodium\n");
         return 1;
     }
     if (net_init() != 0) {

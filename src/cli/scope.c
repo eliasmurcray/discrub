@@ -9,7 +9,7 @@ typedef struct {
     const char *name;
 } scope_candidate_t;
 
-static int is_snowflake(const char *s) {
+int scope_is_snowflake(const char *s) {
     size_t len = strlen(s);
     if (len < 16 || len > 20) {
         return 0;
@@ -121,7 +121,7 @@ ScopeStatus scope_resolve_guild(SSL *ssl, const char *token, const char *query,
     }
     *out_id = NULL;
     *out_name = NULL;
-    if (is_snowflake(query)) {
+    if (scope_is_snowflake(query)) {
         return take_snowflake(query, out_id, out_name);
     }
     DiscordGuildList guilds;
@@ -160,7 +160,7 @@ ScopeStatus scope_resolve_channel(SSL *ssl, const char *token,
     }
     *out_id = NULL;
     *out_name = NULL;
-    if (is_snowflake(query)) {
+    if (scope_is_snowflake(query)) {
         return take_snowflake(query, out_id, out_name);
     }
     DiscordChannelList channels;
@@ -183,7 +183,7 @@ ScopeStatus scope_resolve_dm(SSL *ssl, const char *token, const char *query,
     }
     *out_id = NULL;
     *out_name = NULL;
-    if (is_snowflake(query)) {
+    if (scope_is_snowflake(query)) {
         return take_snowflake(query, out_id, out_name);
     }
     DiscordChannelList channels;

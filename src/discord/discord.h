@@ -60,15 +60,20 @@ typedef struct {
 
 typedef struct {
     const char *content;
-    const char *author_id;
+    const char *const *author_ids;
+    size_t author_id_count;
     const char *channel_id;
     const char *has;
     const char *max_id;
     const char *min_id;
     int offset;
+    bool include_nsfw;
 } DiscordSearchParams;
 
 DiscordStatus discord_get_current_version(SSL *ssl, const char *branch, char **out_version);
+
+int discord_last_http_status(void);
+const char *discord_last_error_message(void);
 
 DiscordStatus discord_login(SSL *ssl, const char *email, const char *password, DiscordLoginResult *result);
 DiscordStatus discord_verify_mfa(SSL *ssl, const char *authenticator_type, const char *ticket, const char *login_instance_id, const char *code, DiscordLoginResult *result);

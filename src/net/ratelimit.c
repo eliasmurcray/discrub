@@ -1,6 +1,6 @@
 #include "ratelimit.h"
 #include "common/strutil.h"
-#include <errno.h>
+#include "common/timeutil.h"
 #include <openssl/rand.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -43,23 +43,6 @@ static long long now_ms(void) {
         return 0;
     }
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-#endif
-}
-
-static void sleep_ms(long ms) {
-    if (ms <= 0) {
-        return;
-    }
-#if defined(_WIN32)
-    Sleep((DWORD)ms);
-#else
-    struct timespec ts;
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (ms % 1000) * 1000000L;
-    struct timespec remaining;
-    while (nanosleep(&ts, &remaining) == -1 && errno == EINTR) {
-        ts = remaining;
-    }
 #endif
 }
 

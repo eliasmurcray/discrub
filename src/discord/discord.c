@@ -28,6 +28,14 @@ typedef struct {
     yyjson_val *root;
 } discord_resp_t;
 
+static _Thread_local int g_last_status = 0;
+static _Thread_local char *g_last_message = NULL;
+static char *json_dup_str(yyjson_val *obj, const char *key);
+
+int discord_last_http_status(void) { return g_last_status; }
+
+const char *discord_last_error_message(void) { return g_last_message; }
+
 static void resp_free(discord_resp_t *resp) {
     if (resp->doc) {
         yyjson_doc_free(resp->doc);
@@ -103,6 +111,9 @@ static DiscordStatus discord_request(SSL *ssl, const char *token,
             resp->root = yyjson_doc_get_root(resp->doc);
         }
     }
+    g_last_status = resp->http.status;
+    free(g_last_message);
+    g_last_message = resp->root ? json_dup_str(resp->root, "message") : NULL;
     if (resp->http.status == 401 && resp->root) {
         yyjson_val *code_val = yyjson_obj_get(resp->root, "code");
         if (yyjson_get_sint(code_val) == 60003) {
@@ -215,9 +226,13 @@ static int build_search_path(strbuf_t *buf, const char *base_path,
                            params ? params->content : NULL) < 0) {
         return -1;
     }
-    if (append_query_param(buf, &first, "author_id",
-                           params ? params->author_id : NULL) < 0) {
-        return -1;
+    if (params) {
+        for (size_t i = 0; i < params->author_id_count; i++) {
+            if (append_query_param(buf, &first, "author_id",
+                                   params->author_ids[i]) < 0) {
+                return -1;
+            }
+        }
     }
     if (include_channel_filter &&
         append_query_param(buf, &first, "channel_id",
@@ -240,6 +255,11 @@ static int build_search_path(strbuf_t *buf, const char *base_path,
         char offset_str[16];
         snprintf(offset_str, sizeof(offset_str), "%d", params->offset);
         if (append_query_param(buf, &first, "offset", offset_str) < 0) {
+            return -1;
+        }
+    }
+    if (include_channel_filter && params && params->include_nsfw) {
+        if (append_query_param(buf, &first, "include_nsfw", "true") < 0) {
             return -1;
         }
     }

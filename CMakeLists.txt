@@ -51,6 +51,7 @@ add_library(common
   src/common/base64.c
   src/common/tty.c
   src/common/strutil.c
+  src/common/timeutil.c
 )
 target_include_directories(common PUBLIC src/)
 target_link_libraries(common PRIVATE xcord_options)
@@ -79,10 +80,13 @@ add_executable(main
   src/main.c
   src/cli/cli.c
   src/cli/scope.c
+  src/cli/filters.c
   src/cli/cmd_login.c
   src/cli/cmd_whoami.c
   src/cli/cmd_guilds.c
   src/cli/cmd_logout.c
+  src/cli/cmd_purge.c
+  src/cli/cmd_channels.c
 )
 target_link_libraries(main PRIVATE discord net common credentials cargs xcord_options)
 find_program(CLANG_FORMAT clang-format)
